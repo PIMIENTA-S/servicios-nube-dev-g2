@@ -14,7 +14,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Owner       = "marhernandezpa@unal.edu.co"
+      Owner       = "apimienta@unal.edu.co"
       ManagedBy   = "terraform"
       Project     = var.project
       Environment = var.environment
