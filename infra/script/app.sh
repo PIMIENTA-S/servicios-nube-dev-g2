@@ -61,7 +61,7 @@ REPO_DIR="${BASE_DIR}/app"     # repo clonado (contiene app/ e infra/)
 APP_DIR="${REPO_DIR}/app"      # carpeta de la app (docker-compose.yml vive aquí)
 
 # ======== CLONADO/ACTUALIZACIÓN DEL REPO (PRIMERO) ========
-REPO_URL="https://github.com/Marihp/serviciosnube-2025.git"
+REPO_URL="https://github.com/Marihp/servicios-nube-dev-g2.git"
 REPO_BRANCH="main"
 mkdir -p "${BASE_DIR}"
 cd "${BASE_DIR}"
@@ -102,7 +102,7 @@ get_ssm_first() {
 }
 
 # ======== LEER SSM y normalizar DB_HOST ========
-COMPANY_NAME="Nexa Cloud"
+COMPANY_NAME="NexaCloud"
 
 DB_HOST="$(get_ssm_first "${SSM_PATH}/db/host" "${SSM_PATH}/DB_HOST")"
 DB_PORT="$(get_ssm_first "${SSM_PATH}/db/port" "${SSM_PATH}/DB_PORT")"
