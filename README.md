@@ -403,6 +403,8 @@ Todos los parámetros se almacenan en SSM Parameter Store bajo el prefijo `/{pro
 - **S3 Versioning:** Protección contra eliminación accidental
 - **Terraform State:** Almacenado en S3 con encriptación y lockfile
 
+
+Calculadora de costos:
 ---
 | Servicio                            | Configuración                     | Costo Estimado (USD/mes) |
 | ----------------------------------- | --------------------------------- | ------------------------ |
@@ -417,3 +419,5 @@ Todos los parámetros se almacenan en SSM Parameter Store bajo el prefijo `/{pro
 | **CloudWatch Logs**                 | ~1GB + métricas                   | **$1.50 – $3**           |
 | **SSM Parameter Store**             | 5 parámetros (incl. SecureString) | **$0.05**                |
 | **Transferencias internas**         | ALB→EC2, EC2→RDS, etc.            | **$1 – $2**              |
+
+Costo Total Estimado: $93 – $108 USD / mes
