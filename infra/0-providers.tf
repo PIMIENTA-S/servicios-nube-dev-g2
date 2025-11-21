@@ -1,3 +1,13 @@
+################################################################################
+# CONFIGURACIÓN DE PROVEEDORES
+#
+# Este archivo configura los proveedores de Terraform requeridos para el proyecto.
+# Especifica la versión requerida de Terraform y el proveedor de AWS.
+#
+# Proveedores:
+# - hashicorp/aws: Proveedor principal para interactuar con los servicios de AWS.
+################################################################################
+
 terraform {
   required_version = ">= 1.13.1"
   required_providers {

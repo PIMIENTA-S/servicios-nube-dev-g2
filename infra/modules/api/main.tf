@@ -1,7 +1,8 @@
-############################################
-# API Gateway REST -> Lambda (recursos directos)
-# - Usa var.aws_region (evita atributo deprecado)
-############################################
+################################################################################
+# MÓDULO DE API (API GATEWAY)
+#
+# Este módulo configura la API REST que expone las funciones Lambda.
+################################################################################
 
 resource "aws_api_gateway_rest_api" "api" {
   name        = "${var.project}-${var.environment}-api"
@@ -32,8 +33,7 @@ resource "aws_api_gateway_integration" "images_get" {
   http_method             = aws_api_gateway_method.images_get.http_method
   type                    = "AWS_PROXY"
   integration_http_method = "POST"
-  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.images.arn}/invocations"
-  depends_on              = [aws_lambda_function.images]
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${var.lambda_arns["images"]}/invocations"
 }
 
 # ----- /students POST -> aws_lambda_function.students -----
@@ -57,15 +57,14 @@ resource "aws_api_gateway_integration" "students_post" {
   http_method             = aws_api_gateway_method.students_post.http_method
   type                    = "AWS_PROXY"
   integration_http_method = "POST"
-  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.students.arn}/invocations"
-  depends_on              = [aws_lambda_function.students]
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${var.lambda_arns["students"]}/invocations"
 }
 
 # Permisos para que API GW invoque las lambdas
 resource "aws_lambda_permission" "allow_apigw_images" {
   statement_id  = "AllowAPIGWInvokeImages"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.images.function_name
+  function_name = var.lambda_names["images"]
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/images"
 }
@@ -73,7 +72,7 @@ resource "aws_lambda_permission" "allow_apigw_images" {
 resource "aws_lambda_permission" "allow_apigw_students" {
   statement_id  = "AllowAPIGWInvokeStudents"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.students.function_name
+  function_name = var.lambda_names["students"]
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/students"
 }
@@ -153,8 +152,4 @@ resource "aws_api_gateway_usage_plan_key" "bind" {
   key_id        = aws_api_gateway_api_key.key.id
   key_type      = "API_KEY"
   usage_plan_id = aws_api_gateway_usage_plan.plan.id
-}
-
-output "api_invoke_url" {
-  value = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_api_gateway_stage.prod.stage_name}"
 }

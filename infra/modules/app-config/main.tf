@@ -1,19 +1,21 @@
-############################################
-# Parámetros de app / DB en SSM (vía module.db)
-############################################
+################################################################################
+# MÓDULO DE CONFIGURACIÓN DE APLICACIÓN (APP CONFIG)
+#
+# Este módulo almacena la configuración de la aplicación en SSM Parameter Store.
+################################################################################
 
 # Host / endpoint del RDS
 resource "aws_ssm_parameter" "db_host" {
   name  = "/${var.project}/${var.environment}/db/host"
   type  = "String"
-  value = module.db.db_instance_endpoint
+  value = var.rds_endpoint
 }
 
 # Puerto
 resource "aws_ssm_parameter" "db_port" {
   name  = "/${var.project}/${var.environment}/db/port"
   type  = "String"
-  value = tostring(module.db.db_instance_port)
+  value = tostring(var.rds_port)
 }
 
 # Nombre de base
@@ -31,14 +33,13 @@ resource "aws_ssm_parameter" "db_user" {
 }
 
 
-############################################
+# ############################################
 # SSM params para URLs y API keys de la app
-# - Usa tu API Gateway ya creado (mismo REST API/Stage)
-############################################
+# ############################################
 
-# Base URL de API Gateway (mismo cálculo que tu output)
+# Base URL de API Gateway
 locals {
-  api_base_url = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_api_gateway_stage.prod.stage_name}"
+  api_base_url = "https://${var.api_id}.execute-api.${var.aws_region}.amazonaws.com/${var.stage_name}"
 }
 
 # --- URLs a tus endpoints ---
@@ -57,31 +58,29 @@ resource "aws_ssm_parameter" "lambda_db_url" {
 }
 
 # --- API Keys ---
-# Reutilizamos TU API key existente para ambos (si quieres 2 llaves distintas, te dejo nota abajo)
 resource "aws_ssm_parameter" "lambda_s3_apikey" {
   name  = "/${var.project}/${var.environment}/lambda/s3/apikey"
   type  = "SecureString"
-  value = aws_api_gateway_api_key.key.value
+  value = var.api_key_value
 }
 
 resource "aws_ssm_parameter" "lambda_db_apikey" {
   name  = "/${var.project}/${var.environment}/lambda/db/apikey"
   type  = "SecureString"
-  value = aws_api_gateway_api_key.key.value
+  value = var.api_key_value
 }
 
 # --- Otros parámetros usados por tu user_data ---
-# Ruta para stress (ajústala si tu app usa otra)
+# Ruta para stress
 resource "aws_ssm_parameter" "stress_path" {
   name  = "/${var.project}/${var.environment}/stress/path"
   type  = "String"
   value = "/stress"
 }
 
-# URL del ALB (si no quieres depender del recurso, pásalo vía variable)
+# URL del ALB
 resource "aws_ssm_parameter" "alb_url" {
   name  = "/${var.project}/${var.environment}/alb/url"
   type  = "String"
-  value = "http://servicios-nube-dev-alb-467986149.us-east-1.elb.amazonaws.com"
+  value = "http://${var.alb_dns_name}"
 }
-

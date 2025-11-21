@@ -1,31 +1,12 @@
-############################################
-# MONITOREO: ALB, API GW, RDS
-############################################
-
-# ==========================
-# ALB → obtener ARN suffix
-# ==========================
-data "aws_lb" "main" {
-  arn = aws_lb.alb.arn
-}
-
-locals {
-  alb_arn_suffix = data.aws_lb.main.arn_suffix
-
-  # API Gateway
-  apigw_id    = aws_api_gateway_rest_api.api.id
-  apigw_stage = aws_api_gateway_stage.prod.stage_name
-}
+################################################################################
+# MÓDULO DE MONITOREO (MONITORING)
+#
+# Este módulo define las alarmas de CloudWatch para monitorear la salud de la infraestructura.
+################################################################################
 
 # ==========================
 # RDS MONITORING
 # ==========================
-
-# Tu módulo RDS no tiene output "db_instance_id",
-# por lo que debemos tomarlo del recurso real:
-#data "aws_db_instance" "db" {
-#  db_instance_identifier = module.db.db_instance_identifier
-#}
 
 resource "aws_cloudwatch_metric_alarm" "rds_free_storage" {
   alarm_name          = "${var.project}-${var.environment}-rds-free-storage"
@@ -38,7 +19,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_free_storage" {
   threshold           = 2000000000 # 2GB
 
   dimensions = {
-    DBInstanceIdentifier = module.db.db_instance_identifier
+    DBInstanceIdentifier = var.rds_instance_identifier
   }
 
   alarm_description = "RDS free storage too low"
@@ -60,7 +41,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   threshold           = 5
 
   dimensions = {
-    LoadBalancer = local.alb_arn_suffix
+    LoadBalancer = var.alb_arn_suffix
   }
 
   alarm_description = "ALB returning too many 5XX errors"
@@ -81,8 +62,8 @@ resource "aws_cloudwatch_metric_alarm" "apigw_5xx" {
   threshold           = 1
 
   dimensions = {
-    ApiName = local.apigw_id
-    Stage   = local.apigw_stage
+    ApiName = var.apigw_id
+    Stage   = var.apigw_stage
   }
 
   alarm_description = "API Gateway returning 5XX errors"

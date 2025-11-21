@@ -1,84 +1,17 @@
-############################################
-# Lambdas con AWS Provider (archivo único)
-############################################
+################################################################################
+# MÓDULO DE CÓMPUTO (COMPUTE)
+#
+# Este módulo agrupa los recursos de procesamiento:
+# - Funciones Lambda
+# - Auto Scaling Group (ASG) con EC2
+# - Application Load Balancer (ALB)
+################################################################################
 
-#########################
-# Variables
-#########################
-
-variable "lambda_runtime" {
-  type        = string
-  default     = "python3.12"
-  description = "Runtime de las Lambdas (p. ej. python3.12 o python3.13)"
-}
-
-variable "lambda_architectures" {
-  type    = list(string)
-  default = ["x86_64"]
-}
-
-variable "lambda_timeout" {
-  type    = number
-  default = 30
-}
-
-variable "lambda_memory" {
-  type    = number
-  default = 256
-}
-
-variable "log_retention_in_days" {
-  type    = number
-  default = 14
-}
-
-variable "enable_lambda_tags" {
-  type    = bool
-  default = true
-}
-
-variable "use_docker_packaging" {
-  type        = bool
-  default     = false
-  description = "Instala requirements.txt dentro de cada lambda usando Docker (imagen SAM)."
-}
-
-variable "lambda_exec_role_arn" {
-  type        = string
-  default     = ""
-  description = "ARN de un IAM Role existente para Lambda. Si vacío, se crea uno nuevo."
-}
-
-variable "images_env" {
-  type    = map(string)
-  default = {}
-}
-variable "students_env" {
-  type    = map(string)
-  default = {}
-}
-variable "db_init_env" {
-  type    = map(string)
-  default = {}
-}
-
-variable "lambda_tags_extra" {
-  type    = map(string)
-  default = {}
-}
-
-variable "images_bucket" {
-  type        = string
-  description = "Bucket S3 donde están las imágenes"
-  default     = "servicios-nube-dev-images"
-}
-
-#########################
-# Locals
-#########################
+# ------------------------------------------------------------------------------
+# LAMBDAS
+# ------------------------------------------------------------------------------
 
 locals {
-  # Requiere que en tu repo existan var.project / var.environment
   name_prefix = "${var.project}-${var.environment}"
 
   tags = merge({
@@ -87,15 +20,11 @@ locals {
     ManagedBy   = "Terraform"
   }, var.lambda_tags_extra)
 
-  # Imagen SAM para el empaquetado Docker (si activas use_docker_packaging)
+  # Imagen SAM para el empaquetado Docker
   sam_image = var.lambda_runtime == "python3.13" ? "public.ecr.aws/sam/build-python3.13:latest" : "public.ecr.aws/sam/build-python3.12:latest"
 }
 
-
-#########################
 # IAM Role
-#########################
-
 data "aws_iam_policy_document" "assume_lambda" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -154,21 +83,15 @@ locals {
   lambda_role_arn = element(concat(aws_iam_role.lambda_exec[*].arn, [var.lambda_exec_role_arn]), 0)
 }
 
-#########################
-# Build directory (fix Windows)
-#########################
-
+# Build directory
 resource "null_resource" "ensure_build_dir" {
   provisioner "local-exec" {
-    command = "powershell -Command \"if (!(Test-Path -Path '${path.module}/build')) { New-Item -ItemType Directory -Path '${path.module}/build' | Out-Null }\""
+    command = "mkdir -p ${path.module}/build"
   }
   triggers = { always = timestamp() }
 }
 
-#########################
 # Docker packaging (optional)
-#########################
-
 resource "null_resource" "images_pip" {
   triggers = { use = tostring(var.use_docker_packaging) }
   provisioner "local-exec" {
@@ -193,10 +116,7 @@ resource "null_resource" "db_init_pip" {
   }
 }
 
-#########################
 # ZIPs
-#########################
-
 data "archive_file" "images_zip" {
   depends_on  = [null_resource.ensure_build_dir, null_resource.images_pip]
   type        = "zip"
@@ -218,10 +138,7 @@ data "archive_file" "db_init_zip" {
   output_path = "${path.module}/build/db_init.zip"
 }
 
-#########################
 # Log Groups
-#########################
-
 resource "aws_cloudwatch_log_group" "images" {
   name              = "/aws/lambda/${local.name_prefix}-images-handler"
   retention_in_days = var.log_retention_in_days
@@ -240,13 +157,10 @@ resource "aws_cloudwatch_log_group" "dbinit" {
   tags              = var.enable_lambda_tags ? local.tags : {}
 }
 
-#########################
 # Lambda functions
-#########################
-
 locals {
-  lambda_subnets = module.vpc.private_subnets
-  lambda_sg_ids  = [aws_security_group.lambdas.id]
+  lambda_subnets = var.private_subnets
+  lambda_sg_ids  = [var.lambda_sg_id]
 }
 
 resource "aws_lambda_function" "images" {
@@ -338,14 +252,135 @@ resource "aws_lambda_function" "db_init" {
   publish    = true
 }
 
-#########################
-# Outputs
-#########################
+# ------------------------------------------------------------------------------
+# ALB & ASG
+# ------------------------------------------------------------------------------
 
-output "lambda_arns" {
-  value = {
-    images   = aws_lambda_function.images.arn
-    students = aws_lambda_function.students.arn
-    db_init  = aws_lambda_function.db_init.arn
+# AMI Amazon Linux 2023
+data "aws_ami" "al2023" {
+  most_recent = true
+  owners      = ["137112412989"] # Amazon
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
+
+# Rol para SSM (sin abrir SSH)
+resource "aws_iam_role" "ec2_role" {
+  name = "${var.project}-${var.environment}-ec2-ssm"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [{ Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+resource "aws_iam_role_policy_attachment" "ec2_ssm" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project}-${var.environment}-ec2-profile"
+  role = aws_iam_role.ec2_role.name
+}
+
+
+resource "aws_launch_template" "web" {
+  name_prefix   = "${var.project}-${var.environment}-lt-"
+  image_id      = data.aws_ami.al2023.id
+  instance_type = var.instance_type
+
+  iam_instance_profile { name = aws_iam_instance_profile.ec2_profile.name }
+  vpc_security_group_ids = [var.web_sg_id]
+
+
+  user_data = base64encode(file("${path.module}/script/app.sh"))
+
+
+  block_device_mappings {
+    device_name = "/dev/xvda" # raíz
+    ebs {
+      volume_size           = 40
+      volume_type           = "gp3"
+      delete_on_termination = true
+      iops                  = 3000
+      throughput            = 125
+      encrypted             = true
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = { Name = "${var.project}-${var.environment}-web" }
+  }
+}
+
+resource "aws_lb" "alb" {
+  name               = "${var.project}-${var.environment}-alb"
+  load_balancer_type = "application"
+  security_groups    = [var.alb_sg_id]
+  subnets            = var.public_subnets
+}
+
+resource "aws_lb_target_group" "tg" {
+  name     = "${var.project}-${var.environment}-tg"
+  port     = 3000
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+  health_check {
+    path                = var.alb_health_check_path
+    matcher             = "200"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+    timeout             = 5
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.alb.arn
+  port              = 80
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg.arn
+  }
+}
+
+resource "aws_autoscaling_group" "asg" {
+  name                = "${var.project}-${var.environment}-asg"
+  desired_capacity    = var.asg_desired
+  max_size            = var.asg_max
+  min_size            = 1
+  vpc_zone_identifier = var.private_subnets
+
+  launch_template {
+    id      = aws_launch_template.web.id
+    version = "$Latest"
+  }
+
+  target_group_arns = [aws_lb_target_group.tg.arn]
+  health_check_type = "EC2"
+
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 90
+      instance_warmup        = 60
+    }
+    triggers = ["launch_template"]
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${var.project}-${var.environment}-web"
+    propagate_at_launch = true
   }
 }
